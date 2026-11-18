@@ -1,0 +1,23 @@
+name: Tests
+
+on:
+  push:
+    paths-ignore: ["content/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          sudo apt-get install -y --no-install-recommends libfribidi0 >/dev/null 2>&1 || true
+          pip install -q -r requirements-dev.txt
+      - run: python -m pytest -q

@@ -1,0 +1,5 @@
+anthropic>=2.10,<3
+requests>=2.31
+PyYAML>=6.0
+Pillow>=11.0
+pydantic>=2.6
