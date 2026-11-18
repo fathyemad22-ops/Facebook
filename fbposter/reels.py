@@ -23,6 +23,7 @@ class Slide:
     body: str = ""
     label: str = ""
     seconds: float = 4.0
+    narration: str = ""
 
 
 def _background(cfg: Config) -> Image.Image:
@@ -90,7 +91,47 @@ def _ease(t: float) -> float:
     return 1 - (1 - t) ** 3
 
 
-def render_reel(cfg: Config, slides: list[Slide], out: Path, ffmpeg: str | None = None) -> Path:
+def narrate(slides: list[Slide], workdir: Path, voice: str = "ar-EG-ShakirNeural", ffmpeg: str | None = None) -> Path:
+    """Voice each slide's narration (Microsoft Edge neural TTS) and stretch slides to fit.
+
+    Returns one audio track covering all slides back to back.
+    """
+    import asyncio
+    import os
+
+    import edge_tts
+
+    ffmpeg = ffmpeg or shutil.which("ffmpeg")
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    parts = []
+    for i, slide in enumerate(slides):
+        wav = workdir / f"part{i}.wav"
+        if slide.narration:
+            mp3 = workdir / f"part{i}.mp3"
+            asyncio.run(edge_tts.Communicate(slide.narration, voice, proxy=proxy).save(str(mp3)))
+            subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(mp3), "-ar", "44100", "-ac", "2", str(wav)], check=True)
+            dur = float(subprocess.run(
+                [ffmpeg.replace("ffmpeg", "ffprobe"), "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", str(wav)], capture_output=True, text=True, check=True).stdout.strip())
+            slide.seconds = max(slide.seconds, dur + 0.7)
+            pad = workdir / f"pad{i}.wav"
+            subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(wav), "-af",
+                            f"adelay=250|250,apad=whole_dur={slide.seconds}", "-t", str(slide.seconds), str(pad)], check=True)
+        else:
+            pad = workdir / f"pad{i}.wav"
+            subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                            "anullsrc=channel_layout=stereo:sample_rate=44100", "-t", str(slide.seconds), str(pad)], check=True)
+        parts.append(pad)
+    listing = workdir / "list.txt"
+    listing.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
+    track = workdir / "narration.wav"
+    subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing), str(track)], check=True)
+    return track
+
+
+def render_reel(cfg: Config, slides: list[Slide], out: Path, ffmpeg: str | None = None, audio: Path | None = None) -> Path:
     ffmpeg = ffmpeg or shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is required to render reels")
@@ -100,7 +141,7 @@ def render_reel(cfg: Config, slides: list[Slide], out: Path, ffmpeg: str | None 
     proc = subprocess.Popen(
         [ffmpeg, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
          "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-         "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+         *(["-i", str(audio)] if audio else ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]),
          "-shortest", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(out)],
         stdin=subprocess.PIPE,
