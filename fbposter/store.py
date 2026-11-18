@@ -33,6 +33,8 @@ class Post(BaseModel):
     with_image: bool = True
     approved: bool = False
     source: str = "claude-api"
+    # Optional text for the card's top pill; defaults to the pillar's name.
+    label: str | None = None
     # Optional ISO-8601 time; the post is skipped until this moment has passed.
     not_before: str | None = None
 

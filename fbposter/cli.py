@@ -47,6 +47,10 @@ def _pillar_name(cfg: Config, pillar_id: str) -> str:
     return next((p.name for p in cfg.niche.pillars if p.id == pillar_id), pillar_id)
 
 
+def _card_label(cfg: Config, post: Post) -> str:
+    return post.label or _pillar_name(cfg, post.pillar)
+
+
 def _generate(cfg: Config, store: Store, count: int) -> list[Post]:
     from .generator import generate_posts
 
@@ -126,7 +130,7 @@ def _render_previews(cfg: Config, store: Store, posts: list[Post]) -> None:
 
     for p in posts:
         if p.with_image and p.card:
-            render_card(cfg, p, store.image_path_for(p), _pillar_name(cfg, p.pillar))
+            render_card(cfg, p, store.image_path_for(p), _card_label(cfg, p))
 
 
 def cmd_preview(cfg: Config, store: Store, args) -> int:
@@ -169,7 +173,7 @@ def cmd_post(cfg: Config, store: Store, args) -> int:
         image = store.image_path_for(post)
         if not image.exists():
             image = cfg.root / "out" / f"{post.id}.png"
-            render_card(cfg, post, image, _pillar_name(cfg, post.pillar))
+            render_card(cfg, post, image, _card_label(cfg, post))
 
     text = post.full_text()
     if args.dry_run:
@@ -279,7 +283,7 @@ def cmd_next(cfg: Config, store: Store, args) -> int:
         return 0
     image = store.image_path_for(post)
     if post.with_image and post.card and not image.exists() and args.render:
-        render_card(cfg, post, image, _pillar_name(cfg, post.pillar))
+        render_card(cfg, post, image, _card_label(cfg, post))
     has_image = post.with_image and image.exists()
     base = args.raw_base or _raw_base(cfg)
     rel = image.relative_to(cfg.root).as_posix()
@@ -304,6 +308,17 @@ def cmd_done(cfg: Config, store: Store, args) -> int:
         return 1
     store.record_published(post, args.fb_id or "", args.permalink)
     print(f"Recorded {post.id} as published.")
+    return 0
+
+
+def cmd_brand(cfg: Config, store: Store, args) -> int:
+    """Render the Page profile picture and cover photo into page/."""
+    from .brand import render_cover, render_profile
+
+    out = cfg.root / "page"
+    p = render_profile(cfg, out / "profile.png")
+    c = render_cover(cfg, out / "cover.png", cfg.page.tagline, cfg.page.cover_points)
+    print(f"Profile picture: {p.relative_to(cfg.root)}\nCover photo: {c.relative_to(cfg.root)}")
     return 0
 
 
@@ -348,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     p_done.add_argument("id")
     p_done.add_argument("--fb-id")
     p_done.add_argument("--permalink")
+    sub.add_parser("brand", help="render the Page profile picture and cover photo")
     p_tok = sub.add_parser("token", help="exchange a short-lived user token for permanent Page tokens")
     p_tok.add_argument("--app-id")
     p_tok.add_argument("--app-secret")
@@ -366,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
         "add": cmd_add,
         "next": cmd_next,
         "done": cmd_done,
+        "brand": cmd_brand,
         "token": cmd_token,
     }[args.command]
     return handler(cfg, store, args)

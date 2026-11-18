@@ -46,6 +46,8 @@ class Niche(BaseModel):
 class PageCfg(BaseModel):
     name: str
     handle: str = ""
+    tagline: str = ""
+    cover_points: list[str] = Field(default_factory=list)
 
 
 class ClaudeCfg(BaseModel):
