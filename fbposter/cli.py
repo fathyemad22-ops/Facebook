@@ -248,6 +248,65 @@ def cmd_add(cfg: Config, store: Store, args) -> int:
     return 0 if added or not items else 1
 
 
+def _raw_base(cfg: Config) -> str | None:
+    """https://raw.githubusercontent.com/<owner>/<repo>/<branch> for the current checkout."""
+    import re
+    import subprocess
+
+    def git(*a: str) -> str:
+        return subprocess.run(["git", *a], cwd=cfg.root, capture_output=True, text=True).stdout.strip()
+
+    m = re.search(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/*$", git("remote", "get-url", "origin"))
+    branch = os.environ.get("GITHUB_REF_NAME") or git("rev-parse", "--abbrev-ref", "HEAD")
+    if not m or not branch or branch == "HEAD":
+        return None
+    return f"https://raw.githubusercontent.com/{m.group(1)}/{m.group(2)}/{branch}"
+
+
+def cmd_next(cfg: Config, store: Store, args) -> int:
+    """Print the next ready post as JSON, for publishing through a connector such as Zapier.
+
+    The image must be reachable on GitHub, so after `--render` creates a new card,
+    commit and push it before publishing.
+    """
+    import json
+
+    from .cards import render_card
+
+    post = store.next_ready(cfg.posting.require_approval)
+    if post is None:
+        print(json.dumps({"post": None}))
+        return 0
+    image = store.image_path_for(post)
+    if post.with_image and post.card and not image.exists() and args.render:
+        render_card(cfg, post, image, _pillar_name(cfg, post.pillar))
+    has_image = post.with_image and image.exists()
+    base = args.raw_base or _raw_base(cfg)
+    rel = image.relative_to(cfg.root).as_posix()
+    print(json.dumps({
+        "post": {
+            "id": post.id,
+            "pillar": _pillar_name(cfg, post.pillar),
+            "topic": post.topic,
+            "message": post.full_text(),
+            "image_path": rel if has_image else None,
+            "image_url": f"{base}/{rel}" if has_image and base else None,
+        }
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_done(cfg: Config, store: Store, args) -> int:
+    """Record a post published outside this tool (e.g. via Zapier) and remove it from the queue."""
+    post = next((p for p in store.queued() if p.id == args.id), None)
+    if post is None:
+        print(f"No queued post with id {args.id}", file=sys.stderr)
+        return 1
+    store.record_published(post, args.fb_id or "", args.permalink)
+    print(f"Recorded {post.id} as published.")
+    return 0
+
+
 def cmd_token(cfg: Config, store: Store, args) -> int:
     from .facebook import exchange_for_page_tokens
 
@@ -282,6 +341,13 @@ def main(argv: list[str] | None = None) -> int:
     p_add = sub.add_parser("add", help="queue posts from a JSON file (no API key needed)")
     p_add.add_argument("file")
     p_add.add_argument("--source", default="claude-code")
+    p_next = sub.add_parser("next", help="print the next post as JSON (for connector publishing)")
+    p_next.add_argument("--render", action="store_true", help="render the card if it is missing")
+    p_next.add_argument("--raw-base", help="override the raw.githubusercontent.com base URL")
+    p_done = sub.add_parser("done", help="mark a queued post as published")
+    p_done.add_argument("id")
+    p_done.add_argument("--fb-id")
+    p_done.add_argument("--permalink")
     p_tok = sub.add_parser("token", help="exchange a short-lived user token for permanent Page tokens")
     p_tok.add_argument("--app-id")
     p_tok.add_argument("--app-secret")
@@ -298,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
         "preview": cmd_preview,
         "post": cmd_post,
         "add": cmd_add,
+        "next": cmd_next,
+        "done": cmd_done,
         "token": cmd_token,
     }[args.command]
     return handler(cfg, store, args)

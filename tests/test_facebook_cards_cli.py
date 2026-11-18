@@ -129,3 +129,17 @@ def test_cli_add_queues_valid_posts_and_skips_bad_ones(cfg, run, tmp_path):
     (post,) = Store(cfg).queued()
     assert code == 0 and post.topic == "موضوع جديد" and post.hashtags == ["#AI"]
     assert post.card.headline == "عنوان" and post.with_image and post.source == "claude-code"
+
+
+def test_cli_next_and_done_for_connector_publishing(cfg, run, capsys):
+    store = Store(cfg)
+    store.add(make_post("20260101-000000-a", with_image=True))
+    code, _ = run("next", "--render", "--raw-base", "https://raw.example/o/r/main")
+    data = json.loads(capsys.readouterr().out)["post"]
+    assert data["id"] == "20260101-000000-a"
+    assert data["image_url"] == "https://raw.example/o/r/main/content/queue/20260101-000000-a.png"
+    assert data["message"].startswith("نص البوست")
+    code, _ = run("done", "20260101-000000-a", "--fb-id", "1_5")
+    assert code == 0 and store.queued() == [] and store.history()[0]["fb_id"] == "1_5"
+    run("next")
+    assert json.loads(capsys.readouterr().out.splitlines()[-1]) == {"post": None}

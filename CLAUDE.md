@@ -1,7 +1,8 @@
 # Project notes for Claude
 
 Automated Facebook Page publishing. Claude writes posts (Egyptian Arabic by default), they wait
-in `content/queue/*.json`, and `.github/workflows/post.yml` publishes the oldest ready one twice a day.
+in `content/queue/*.json`, and `.github/workflows/post.yml` publishes the oldest ready one 4 times a day
+(or a scheduled Claude session publishes it through the Zapier connector, see below).
 
 ## Layout
 - `config.yaml`: page name, active niche, Claude model/effort, posting options, brand colours.
@@ -21,6 +22,19 @@ in `content/queue/*.json`, and `.github/workflows/post.yml` publishes the oldest
    with_image, not_before) to a scratch file and run `python -m fbposter add <file>`.
 5. Optionally `python -m fbposter preview` to render card PNGs next to the queue files for review.
 6. Run `python -m pytest -q`, then commit `content/` and push.
+
+## Publishing through the Zapier connector (scheduled Claude sessions)
+Use this when the Facebook Page is connected through Zapier instead of GitHub secrets:
+1. `git pull`, then `python -m fbposter next --render`. It prints the next post as JSON
+   (`message`, `image_path`, `image_url`). If `post` is null the queue is empty: write new posts
+   (section above) first.
+2. If `--render` created a new PNG, commit and push it so `image_url` (raw.githubusercontent.com,
+   the repo is public) resolves.
+3. Publish with the Zapier Facebook Pages action: **Create Page Photo** with the image URL and the
+   message as the caption, or **Create Page Post** with the message when `image_url` is null.
+4. `python -m fbposter done <id> --fb-id <id from Zapier> --permalink <url if returned>`,
+   then commit `content/` and push.
+Only one path may publish: do not run this while `post.yml` has Facebook secrets configured.
 
 ## Conventions
 - Never commit tokens or `.env`. Secrets live in GitHub Actions secrets:

@@ -1,8 +1,8 @@
-name: Write next week's posts
+name: Write new posts
 
 on:
   schedule:
-    - cron: "0 5 * * 4"  # every Thursday 05:00 UTC
+    - cron: "0 4 * * *"  # every day 04:00 UTC: top the queue up to queue_target
   workflow_dispatch:
     inputs:
       count:

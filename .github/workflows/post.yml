@@ -3,8 +3,9 @@ name: Publish post
 on:
   schedule:
     # GitHub cron times are UTC. Cairo is UTC+2 in winter and UTC+3 in summer.
-    - cron: "0 8 * * *"   # 10:00 Cairo in winter, 11:00 in summer
-    - cron: "0 18 * * *"  # 20:00 Cairo in winter, 21:00 in summer
+    # 4 posts a day: 09:00, 13:00, 18:00, 22:00 Cairo in winter (one hour later in summer).
+    # Add or remove hours here to change how many posts go out per day.
+    - cron: "0 7,11,16,20 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
